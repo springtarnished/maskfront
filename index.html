@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Color Select Mask Generator</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Color Select Mask Generator</h1>
+
+        <main class="app-area">
+            <!-- Left Side: Upload and Selection -->
+            <div class="control-panel">
+                <h2>1. Upload an Image</h2>
+                <input type="file" id="image-loader" accept="image/*">
+                
+                <div id="image-container" class="image-display hidden">
+                    <img id="source-image" src="" alt="Uploaded Image">
+                </div>
+
+                <h2>2. Set Tolerance</h2>
+                <p>Higher values select a wider range of colors.</p>
+                <div class="slider-container">
+                    <span>0</span>
+                    <input type="range" min="0" max="100" value="20" class="slider" id="tolerance-slider">
+                    <span>100</span>
+                </div>
+                <span id="tolerance-value">Tolerance: 20</span>
+
+                <h2>3. Click on the Image</h2>
+                <p>Click the color on your uploaded image that you want to mask.</p>
+            </div>
+
+            <!-- Right Side: Results -->
+            <div class="result-panel">
+                <h2>4. Generated Mask</h2>
+                <div id="result-container" class="image-display">
+                    <div id="loader" class="hidden"></div>
+                    <p id="placeholder-text">Upload an image and click on it to start...</p>
+                    <img id="mask-image" src="" alt="Generated Mask" class="hidden">
+                </div>
+                <a id="download-btn" href="#" download="mask.png" class="btn hidden">Download Mask</a>
+            </div>
+        </main>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
