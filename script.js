@@ -1,116 +1,106 @@
-document.addEventListener('DOMContentLoaded', () => {
+const BACKEND_URL = "https://maskback.up.railway.app/segment"; // 🔁 change after deploy
 
-    // --- CONFIGURATION ---
-    const BACKEND_URL = 'https://your-backend-url.up.railway.app/generate-mask-from-color';
+const fileInput = document.getElementById("fileInput");
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+const maskBtn = document.getElementById("maskBtn");
+const downloadLink = document.getElementById("downloadLink");
 
-    // --- DOM Elements ---
-    const imageLoader = document.getElementById('image-loader');
-    const imageContainer = document.getElementById('image-container');
-    const sourceImage = document.getElementById('source-image');
-    const toleranceSlider = document.getElementById('tolerance-slider');
-    const toleranceValue = document.getElementById('tolerance-value');
-    
-    const maskImage = document.getElementById('mask-image');
-    const downloadBtn = document.getElementById('download-btn');
-    const loader = document.getElementById('loader');
-    const placeholderText = document.getElementById('placeholder-text');
+let img = new Image();
+let currentFile = null;
+let start = null;
+let box = null; // {x1,y1,x2,y2} in canvas space
 
-    let uploadedFile = null;
+// ---- helpers ----
+function draw() {
+  if (!img.src) return;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  if (box) {
+    const { x1, y1, x2, y2 } = box;
+    ctx.strokeStyle = "#22d3ee";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+  }
+}
 
-    // --- Event Listeners ---
+function scaleToOriginal(value, axis) {
+  // canvas to original image px
+  return Math.round(value * (axis === "x" ? img.naturalWidth / canvas.width : img.naturalHeight / canvas.height));
+}
 
-    // 1. Handle file upload
-    imageLoader.addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        if (file) {
-            uploadedFile = file;
-            const reader = new FileReader();
-            reader.onload = (event) => {
-                sourceImage.src = event.target.result;
-                imageContainer.classList.remove('hidden');
-                placeholderText.textContent = 'Now click on the image to select a color.';
-            };
-            reader.readAsDataURL(file);
-        }
-    });
+// ---- events ----
+fileInput.addEventListener("change", e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  currentFile = file;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    img.onload = () => {
+      // resize canvas to fit max‑width (mobile safe)
+      const max = Math.min(window.innerWidth - 32, img.naturalWidth);
+      const ratio = img.naturalHeight / img.naturalWidth;
+      canvas.width = max;
+      canvas.height = max * ratio;
+      box = null;
+      draw();
+      maskBtn.disabled = true;
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+});
 
-    // 2. Handle clicks on the source image
-    sourceImage.addEventListener('click', (e) => {
-        if (!uploadedFile) {
-            alert('Please upload an image first!');
-            return;
-        }
+canvas.addEventListener("pointerdown", e => {
+  if (!img.src) return;
+  const rect = canvas.getBoundingClientRect();
+  start = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  box = { ...start, x2: start.x, y2: start.y };
+  draw();
+  canvas.setPointerCapture(e.pointerId);
+});
 
-        // --- IMPORTANT: Calculate click coordinates relative to the ORIGINAL image size ---
-        const rect = sourceImage.getBoundingClientRect();
-        
-        // naturalWidth/Height is the original image dimension
-        // clientWidth/Height is the dimension of the <img> tag on the page
-        const scaleX = sourceImage.naturalWidth / sourceImage.clientWidth;
-        const scaleY = sourceImage.naturalHeight / sourceImage.clientHeight;
+canvas.addEventListener("pointermove", e => {
+  if (!start) return;
+  const rect = canvas.getBoundingClientRect();
+  box.x2 = e.clientX - rect.left;
+  box.y2 = e.clientY - rect.top;
+  draw();
+});
 
-        // offsetX/Y is the click position relative to the <img> tag
-        const realX = Math.floor(e.offsetX * scaleX);
-        const realY = Math.floor(e.offsetY * scaleY);
+canvas.addEventListener("pointerup", () => {
+  start = null;
+  if (box) maskBtn.disabled = false;
+});
 
-        const tolerance = toleranceSlider.value;
-        
-        console.log(`Clicked at scaled coordinates: (${realX}, ${realY}) with tolerance ${tolerance}`);
-        
-        generateMask(realX, realY, tolerance);
-    });
+maskBtn.addEventListener("click", async () => {
+  if (!box || !currentFile) return;
+  // normalise box → top‑left / bottom‑right
+  const topLeftX = Math.min(box.x1, box.x2);
+  const topLeftY = Math.min(box.y1, box.y2);
+  const botRightX = Math.max(box.x1, box.x2);
+  const botRightY = Math.max(box.y1, box.y2);
 
-    // 3. Update tolerance display
-    toleranceSlider.addEventListener('input', (e) => {
-        toleranceValue.textContent = `Tolerance: ${e.target.value}`;
-    });
+  const form = new FormData();
+  form.append("file", currentFile);
+  form.append("x1", scaleToOriginal(topLeftX, "x"));
+  form.append("y1", scaleToOriginal(topLeftY, "y"));
+  form.append("x2", scaleToOriginal(botRightX, "x"));
+  form.append("y2", scaleToOriginal(botRightY, "y"));
 
-    // --- Main function to call the backend ---
-    async function generateMask(x, y, tolerance) {
-        // Show loading state
-        loader.classList.remove('hidden');
-        maskImage.classList.add('hidden');
-        placeholderText.classList.add('hidden');
-        downloadBtn.classList.add('hidden');
-
-        // Use FormData to send file and other data
-        const formData = new FormData();
-        formData.append('image', uploadedFile);
-        formData.append('x', x);
-        formData.append('y', y);
-        formData.append('tolerance', tolerance);
-
-        try {
-            const response = await fetch(BACKEND_URL, {
-                method: 'POST',
-                body: formData 
-                // NOTE: Do NOT set 'Content-Type' header. The browser does it
-                // automatically for FormData, including the boundary.
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({ error: 'An unknown error occurred' }));
-                throw new Error(errorData.error || `HTTP error! Status: ${response.status}`);
-            }
-
-            const imageBlob = await response.blob();
-            const imageUrl = URL.createObjectURL(imageBlob);
-
-            // Update UI with result
-            maskImage.src = imageUrl;
-            maskImage.classList.remove('hidden');
-            
-            downloadBtn.href = imageUrl;
-            downloadBtn.classList.remove('hidden');
-
-        } catch (error) {
-            console.error('Error generating mask:', error);
-            placeholderText.textContent = `Error: ${error.message}`;
-            placeholderText.style.color = 'red';
-            placeholderText.classList.remove('hidden');
-        } finally {
-            // Hide loading state
-            loader.classList.add('hidden');
-        }
-    }
+  maskBtn.textContent = "Processing…";
+  maskBtn.disabled = true;
+  try {
+    const res = await fetch(BACKEND_URL, { method: "POST", body: form });
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    downloadLink.href = url;
+    downloadLink.download = "mask.png";
+    downloadLink.textContent = "Download mask";
+    downloadLink.classList.remove("hidden");
+  } catch (err) {
+    alert("Error: " + err.message);
+  } finally {
+    maskBtn.textContent = "Generate Mask";
+  }
 });
