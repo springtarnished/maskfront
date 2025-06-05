@@ -153,4 +153,4 @@ maskBtn.addEventListener("click", async () => {
 modeTapBtn.addEventListener("click", () => setMode("tap"));
 modeBoxBtn.addEventListener("click", () => setMode("box"));
 
-setMode("tap"); // default
+setMode("tap"); // d
